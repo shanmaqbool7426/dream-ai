@@ -1,0 +1,20 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "A9fDJGw_pSFNWRVifIfZ9"
+uri = "file://artifacts/dreamscape/assets/images/icon.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "g-L6Ku3WST_mCaUR4y5rH"
+uri = "file://artifacts/dreamscape/assets/images/dream_hero.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "0pa1e6cPNIofNvSGbTcjb"
+uri = "file://artifacts/dreamscape/assets/images/dream_emotions.png"
+type = "image"
+title = "generated_image"
