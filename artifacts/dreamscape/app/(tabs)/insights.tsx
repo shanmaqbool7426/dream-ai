@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useMemo } from "react";
 import {
-  Dimensions,
   Platform,
   ScrollView,
   StyleSheet,
@@ -11,12 +10,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDreams } from "@/context/DreamContext";
-
-const { width } = Dimensions.get("window");
-
-function getDayLabel(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { weekday: "short" });
-}
 
 function getWeekDays() {
   const days = [];
@@ -28,35 +21,44 @@ function getWeekDays() {
   return days;
 }
 
+const QUALITY_COLORS: Record<number, [string, string]> = {
+  1: ["#FF5A7E", "#CC3A5E"],
+  2: ["#FF9B5A", "#CC6E3A"],
+  3: ["#FFD25A", "#CCa03A"],
+  4: ["#7BE8A0", "#4CBF72"],
+  5: ["#00D4FF", "#0099CC"],
+};
+
+const QUALITY_LABELS: Record<number, string> = {
+  1: "Terrible",
+  2: "Poor",
+  3: "Fair",
+  4: "Good",
+  5: "Great",
+};
+
 export default function InsightsScreen() {
   const insets = useSafeAreaInsets();
   const { dreams } = useDreams();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
+  const weekDays = useMemo(() => getWeekDays(), []);
+
   const emotionCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    dreams.forEach((d) => {
-      d.emotions.forEach((e) => {
-        counts[e] = (counts[e] || 0) + 1;
-      });
-    });
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 7);
+    dreams.forEach((d) => d.emotions.forEach((e) => { counts[e] = (counts[e] || 0) + 1; }));
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 7);
   }, [dreams]);
 
   const symbolCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    dreams.forEach((d) => {
-      d.interpretation?.symbols?.forEach((s) => {
-        counts[s.symbol] = (counts[s.symbol] || 0) + 1;
-      });
-    });
+    dreams.forEach((d) => d.interpretation?.symbols?.forEach((s) => {
+      counts[s.symbol] = (counts[s.symbol] || 0) + 1;
+    }));
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [dreams]);
 
-  const weekDays = getWeekDays();
   const dreamsByDay = useMemo(() => {
     const map: Record<string, number> = {};
     weekDays.forEach((d) => (map[d] = 0));
@@ -66,6 +68,27 @@ export default function InsightsScreen() {
     });
     return map;
   }, [dreams, weekDays]);
+
+  const sleepByDay = useMemo(() => {
+    const map: Record<string, number | null> = {};
+    weekDays.forEach((d) => (map[d] = null));
+    dreams.forEach((dr) => {
+      if (dr.sleepQuality == null) return;
+      const day = dr.date.split("T")[0];
+      if (day in map) {
+        const prev = map[day];
+        map[day] = prev == null ? dr.sleepQuality : Math.round((prev + dr.sleepQuality) / 2);
+      }
+    });
+    return map;
+  }, [dreams, weekDays]);
+
+  const dreamsWithQuality = useMemo(() => dreams.filter((d) => d.sleepQuality != null), [dreams]);
+  const avgSleep = useMemo(() => {
+    if (!dreamsWithQuality.length) return null;
+    const sum = dreamsWithQuality.reduce((acc, d) => acc + (d.sleepQuality ?? 0), 0);
+    return Math.round((sum / dreamsWithQuality.length) * 10) / 10;
+  }, [dreamsWithQuality]);
 
   const maxEmotion = emotionCounts[0]?.[1] || 1;
   const totalDreams = dreams.length;
@@ -97,14 +120,76 @@ export default function InsightsScreen() {
             </LinearGradient>
           </View>
           <View style={styles.statCard}>
-            <LinearGradient colors={["rgba(255,128,192,0.15)", "rgba(255,128,192,0.03)"]} style={styles.statGrad}>
-              <Text style={[styles.statNumber, { color: "#FF80C0" }]}>{symbolCounts.length}</Text>
-              <Text style={styles.statLabel}>Symbols</Text>
+            <LinearGradient
+              colors={avgSleep != null
+                ? (QUALITY_COLORS[Math.round(avgSleep)] ?? ["rgba(123,92,245,0.2)", "rgba(123,92,245,0.05)"])
+                    .map((c) => c + "33") as [string, string]
+                : ["rgba(123,92,245,0.2)", "rgba(123,92,245,0.05)"]}
+              style={styles.statGrad}
+            >
+              <Text style={[styles.statNumber, {
+                color: avgSleep != null ? QUALITY_COLORS[Math.round(avgSleep)]?.[0] ?? "#B0A8FF" : "#B0A8FF"
+              }]}>
+                {avgSleep != null ? avgSleep.toFixed(1) : "--"}
+              </Text>
+              <Text style={styles.statLabel}>Sleep Avg</Text>
             </LinearGradient>
           </View>
         </View>
 
-        {/* Weekly Activity */}
+        {/* Sleep Quality Trend */}
+        <View style={styles.section}>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>Sleep Quality</Text>
+            {avgSleep != null && (
+              <View style={[styles.avgBadge, { borderColor: QUALITY_COLORS[Math.round(avgSleep)]?.[0] + "55" }]}>
+                <Ionicons name="moon" size={11} color={QUALITY_COLORS[Math.round(avgSleep)]?.[0] ?? "#B0A8FF"} />
+                <Text style={[styles.avgBadgeText, { color: QUALITY_COLORS[Math.round(avgSleep)]?.[0] ?? "#B0A8FF" }]}>
+                  {QUALITY_LABELS[Math.round(avgSleep)]} avg
+                </Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.sleepChartCard}>
+            {/* Y axis labels */}
+            <View style={styles.yAxis}>
+              {[5, 4, 3, 2, 1].map((v) => (
+                <Text key={v} style={styles.yLabel}>{v}</Text>
+              ))}
+            </View>
+            {/* Bars */}
+            <View style={styles.sleepBars}>
+              {weekDays.map((day) => {
+                const q = sleepByDay[day];
+                const hasDream = q != null;
+                const barHeight = hasDream ? (q / 5) * 100 : 0;
+                const colors = hasDream ? QUALITY_COLORS[q as number] ?? ["#7B5CF5", "#5A3DD4"] : ["#7B5CF5", "#5A3DD4"];
+                const dayLabel = new Date(day + "T12:00:00").toLocaleDateString("en-US", { weekday: "narrow" });
+                return (
+                  <View key={day} style={styles.sleepDayCol}>
+                    <View style={styles.sleepBarTrack}>
+                      {hasDream && (
+                        <LinearGradient
+                          colors={colors as [string, string]}
+                          style={[styles.sleepBarFill, { height: `${barHeight}%` }]}
+                        />
+                      )}
+                    </View>
+                    <Text style={styles.sleepDayLabel}>{dayLabel}</Text>
+                    {hasDream && (
+                      <Text style={[styles.sleepDayValue, { color: colors[0] }]}>{q}</Text>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+          {dreamsWithQuality.length === 0 && (
+            <Text style={styles.sleepEmptyHint}>Rate your sleep when recording a dream to see trends here.</Text>
+          )}
+        </View>
+
+        {/* Weekly Dream Activity */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>This Week</Text>
           <View style={styles.weekGrid}>
@@ -212,10 +297,7 @@ const styles = StyleSheet.create({
     gap: 24,
     paddingTop: 4,
   },
-  statsRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
+  statsRow: { flexDirection: "row", gap: 10 },
   statCard: {
     flex: 1,
     borderRadius: 18,
@@ -223,11 +305,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(123,92,245,0.15)",
   },
-  statGrad: {
-    padding: 16,
-    alignItems: "center",
-    gap: 4,
-  },
+  statGrad: { padding: 16, alignItems: "center", gap: 4 },
   statNumber: {
     color: "#B0A8FF",
     fontSize: 28,
@@ -241,10 +319,91 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   section: { gap: 14 },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   sectionTitle: {
     color: "#E8E2FF",
     fontSize: 17,
     fontFamily: "Inter_600SemiBold",
+  },
+  avgBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: "rgba(13,11,34,0.8)",
+  },
+  avgBadgeText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+  },
+  sleepChartCard: {
+    backgroundColor: "rgba(13,11,34,0.9)",
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(123,92,245,0.1)",
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "flex-end",
+  },
+  yAxis: {
+    height: 110,
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    paddingBottom: 20,
+  },
+  yLabel: {
+    color: "#3D3A6E",
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    width: 10,
+  },
+  sleepBars: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  sleepDayCol: {
+    flex: 1,
+    alignItems: "center",
+    gap: 4,
+  },
+  sleepBarTrack: {
+    width: "100%",
+    height: 90,
+    borderRadius: 6,
+    backgroundColor: "rgba(123,92,245,0.08)",
+    overflow: "hidden",
+    justifyContent: "flex-end",
+  },
+  sleepBarFill: {
+    width: "100%",
+    borderRadius: 6,
+  },
+  sleepDayLabel: {
+    color: "#6866A0",
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+  },
+  sleepDayValue: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+  },
+  sleepEmptyHint: {
+    color: "#3D3A6E",
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    lineHeight: 18,
   },
   weekGrid: {
     flexDirection: "row",
@@ -255,11 +414,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(123,92,245,0.1)",
   },
-  dayCol: {
-    alignItems: "center",
-    gap: 8,
-    flex: 1,
-  },
+  dayCol: { alignItems: "center", gap: 8, flex: 1 },
   dayBar: {
     width: 28,
     height: 60,
@@ -274,11 +429,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
   },
   emotionBars: { gap: 10 },
-  emotionBarRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
+  emotionBarRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   emotionLabel: {
     color: "#A09EC8",
     fontSize: 12,
@@ -293,11 +444,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(123,92,245,0.1)",
     overflow: "hidden",
   },
-  barFill: {
-    height: "100%",
-    borderRadius: 4,
-    minWidth: 8,
-  },
+  barFill: { height: "100%", borderRadius: 4, minWidth: 8 },
   barCount: {
     color: "#6866A0",
     fontSize: 12,

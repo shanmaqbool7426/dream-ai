@@ -24,6 +24,7 @@ export interface Dream {
   visualStyle?: string;
   interpretation?: DreamInterpretation;
   imageBase64?: string;
+  sleepQuality?: number;
 }
 
 interface DreamContextType {

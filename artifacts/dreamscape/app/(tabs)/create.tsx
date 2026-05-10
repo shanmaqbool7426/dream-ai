@@ -28,14 +28,31 @@ const EMOTIONS = [
 
 const VISUAL_STYLES = ["Cinematic", "Surreal", "Fantasy", "Horror", "Anime", "Watercolor", "Cyberpunk"];
 
+const SLEEP_LABELS: Record<number, string> = {
+  1: "Terrible",
+  2: "Poor",
+  3: "Fair",
+  4: "Good",
+  5: "Great",
+};
+
+const SLEEP_COLORS: Record<number, string> = {
+  1: "#FF5A7E",
+  2: "#FF9B5A",
+  3: "#FFD25A",
+  4: "#7BE8A0",
+  5: "#00D4FF",
+};
+
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { addDream, updateDream } = useDreams();
+  const { addDream } = useDreams();
 
   const [dreamText, setDreamText] = useState("");
   const [selectedEmotions, setSelectedEmotions] = useState<string[]>([]);
   const [selectedStyle, setSelectedStyle] = useState("Cinematic");
+  const [sleepQuality, setSleepQuality] = useState(3);
   const [interpreting, setInterpreting] = useState(false);
   const [interpretation, setInterpretation] = useState<DreamInterpretation | null>(null);
   const [generatingImage, setGeneratingImage] = useState(false);
@@ -72,11 +89,7 @@ export default function CreateScreen() {
       const res = await fetch(`https://${domain}/api/dreams/image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dreamText: text,
-          interpretation: interp,
-          visualStyle: style,
-        }),
+        body: JSON.stringify({ dreamText: text, interpretation: interp, visualStyle: style }),
       });
       if (!res.ok) return;
       const data = await res.json() as { b64_json?: string };
@@ -128,6 +141,7 @@ export default function CreateScreen() {
       visualStyle: selectedStyle,
       interpretation,
       imageBase64: imageBase64 || undefined,
+      sleepQuality,
     });
     setSaved(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -136,6 +150,7 @@ export default function CreateScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const activeColor = SLEEP_COLORS[sleepQuality];
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
@@ -151,6 +166,36 @@ export default function CreateScreen() {
         bottomOffset={20}
         showsVerticalScrollIndicator={false}
       >
+        {/* Sleep Quality */}
+        <View style={styles.sleepCard}>
+          <View style={styles.sleepHeader}>
+            <Ionicons name="moon" size={15} color={activeColor} />
+            <Text style={styles.sleepCardLabel}>Sleep Quality</Text>
+            <Text style={[styles.sleepQualityLabel, { color: activeColor }]}>
+              {SLEEP_LABELS[sleepQuality]}
+            </Text>
+          </View>
+          <View style={styles.starsRow}>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <Pressable
+                key={star}
+                onPress={() => {
+                  setSleepQuality(star);
+                  Haptics.selectionAsync();
+                }}
+                style={styles.starBtn}
+              >
+                <Ionicons
+                  name={star <= sleepQuality ? "star" : "star-outline"}
+                  size={32}
+                  color={star <= sleepQuality ? activeColor : "rgba(104,102,160,0.35)"}
+                />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {/* Dream text */}
         <View style={styles.inputCard}>
           <TextInput
             style={styles.dreamInput}
@@ -170,10 +215,7 @@ export default function CreateScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
             {EMOTIONS.map((e) => (
               <Pressable key={e} onPress={() => toggleEmotion(e)}>
-                <View style={[
-                  styles.chip,
-                  selectedEmotions.includes(e) && styles.chipSelected,
-                ]}>
+                <View style={[styles.chip, selectedEmotions.includes(e) && styles.chipSelected]}>
                   <Text style={[styles.chipText, selectedEmotions.includes(e) && styles.chipTextSelected]}>
                     {e}
                   </Text>
@@ -231,7 +273,6 @@ export default function CreateScreen() {
                 <Text style={styles.resultTitle}>{interpretation.title}</Text>
               </View>
 
-              {/* Dream Image */}
               {(generatingImage || imageBase64) && (
                 <View style={styles.imageContainer}>
                   {generatingImage && !imageBase64 ? (
@@ -301,10 +342,7 @@ export default function CreateScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#04040F",
-  },
+  container: { flex: 1, backgroundColor: "#04040F" },
   header: {
     paddingHorizontal: 20,
     paddingBottom: 12,
@@ -327,6 +365,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     gap: 20,
+  },
+  sleepCard: {
+    backgroundColor: "rgba(13,11,34,0.95)",
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(123,92,245,0.2)",
+    gap: 14,
+  },
+  sleepHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  sleepCardLabel: {
+    color: "#B0A8FF",
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    flex: 1,
+  },
+  sleepQualityLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  starsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+  },
+  starBtn: {
+    padding: 4,
   },
   inputCard: {
     backgroundColor: "rgba(13,11,34,0.95)",
@@ -392,15 +463,8 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
-  interpretBtnGradient: {
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  interpretingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
+  interpretBtnGradient: { paddingVertical: 16, alignItems: "center" },
+  interpretingRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   interpretBtnText: {
     color: "#FFFFFF",
     fontSize: 16,
@@ -412,15 +476,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(123,92,245,0.3)",
   },
-  resultGradient: {
-    padding: 20,
-    gap: 16,
-  },
-  resultHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  resultGradient: { padding: 20, gap: 16 },
+  resultHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
   resultTitle: {
     color: "#E8E2FF",
     fontSize: 18,
@@ -445,10 +502,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_400Regular",
   },
-  dreamImage: {
-    width: "100%",
-    height: 220,
-  },
+  dreamImage: { width: "100%", height: 220 },
   resultSubLabel: {
     color: "#7B5CF5",
     fontSize: 11,
@@ -464,11 +518,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   symbolsSection: { gap: 10 },
-  symbolRow: {
-    flexDirection: "row",
-    gap: 10,
-    alignItems: "flex-start",
-  },
+  symbolRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
   symbolDot: {
     width: 6,
     height: 6,
@@ -488,11 +538,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     lineHeight: 18,
   },
-  emotionRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
+  emotionRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   insightBox: { gap: 4 },
   adviceBox: {
     flexDirection: "row",
@@ -521,9 +567,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     marginTop: 4,
   },
-  saveBtnDone: {
-    backgroundColor: "#2E7D52",
-  },
+  saveBtnDone: { backgroundColor: "#2E7D52" },
   saveBtnText: {
     color: "#FFFFFF",
     fontSize: 15,
