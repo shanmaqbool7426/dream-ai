@@ -6,6 +6,7 @@ import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -37,6 +38,8 @@ export default function CreateScreen() {
   const [selectedStyle, setSelectedStyle] = useState("Cinematic");
   const [interpreting, setInterpreting] = useState(false);
   const [interpretation, setInterpretation] = useState<DreamInterpretation | null>(null);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
 
@@ -62,6 +65,28 @@ export default function CreateScreen() {
     Animated.timing(pulseAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
   }
 
+  async function generateDreamImage(interp: DreamInterpretation, style: string, text: string) {
+    setGeneratingImage(true);
+    try {
+      const domain = process.env.EXPO_PUBLIC_DOMAIN;
+      const res = await fetch(`https://${domain}/api/dreams/image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dreamText: text,
+          interpretation: interp,
+          visualStyle: style,
+        }),
+      });
+      if (!res.ok) return;
+      const data = await res.json() as { b64_json?: string };
+      if (data.b64_json) setImageBase64(data.b64_json);
+    } catch {
+    } finally {
+      setGeneratingImage(false);
+    }
+  }
+
   async function interpret() {
     if (!dreamText.trim() || dreamText.trim().length < 20) {
       setError("Please describe your dream in a bit more detail.");
@@ -80,9 +105,10 @@ export default function CreateScreen() {
         body: JSON.stringify({ dreamText: dreamText.trim() }),
       });
       if (!res.ok) throw new Error("Server error");
-      const data = await res.json();
+      const data = await res.json() as DreamInterpretation;
       setInterpretation(data);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      generateDreamImage(data, selectedStyle, dreamText.trim());
     } catch {
       setError("Couldn't interpret your dream. Please try again.");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -101,6 +127,7 @@ export default function CreateScreen() {
       emotions,
       visualStyle: selectedStyle,
       interpretation,
+      imageBase64: imageBase64 || undefined,
     });
     setSaved(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -203,6 +230,24 @@ export default function CreateScreen() {
                 <Ionicons name="sparkles" size={18} color="#7B5CF5" />
                 <Text style={styles.resultTitle}>{interpretation.title}</Text>
               </View>
+
+              {/* Dream Image */}
+              {(generatingImage || imageBase64) && (
+                <View style={styles.imageContainer}>
+                  {generatingImage && !imageBase64 ? (
+                    <View style={styles.imagePlaceholder}>
+                      <ActivityIndicator color="#7B5CF5" size="small" />
+                      <Text style={styles.imagePlaceholderText}>Visualizing your dream...</Text>
+                    </View>
+                  ) : imageBase64 ? (
+                    <Image
+                      source={{ uri: `data:image/png;base64,${imageBase64}` }}
+                      style={styles.dreamImage}
+                      resizeMode="cover"
+                    />
+                  ) : null}
+                </View>
+              )}
 
               <Text style={styles.resultBody}>{interpretation.interpretation}</Text>
 
@@ -381,6 +426,28 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: "Inter_700Bold",
     flex: 1,
+  },
+  imageContainer: {
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(123,92,245,0.25)",
+  },
+  imagePlaceholder: {
+    height: 200,
+    backgroundColor: "rgba(13,11,34,0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+  imagePlaceholderText: {
+    color: "#6866A0",
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+  },
+  dreamImage: {
+    width: "100%",
+    height: 220,
   },
   resultSubLabel: {
     color: "#7B5CF5",

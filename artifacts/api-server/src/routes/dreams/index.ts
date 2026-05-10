@@ -1,7 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Router } from "express";
+import OpenAI from "openai";
 
 const router = Router();
+
+const openai = new OpenAI({
+  baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"],
+  apiKey: process.env["AI_INTEGRATIONS_OPENAI_API_KEY"] || "dummy",
+});
 
 const anthropic = new Anthropic({
   baseURL: process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"],
@@ -63,6 +69,65 @@ Dream:
   } catch (err) {
     req.log.error({ err }, "Dream interpretation error");
     res.status(500).json({ error: "Failed to interpret dream" });
+  }
+});
+
+router.post("/dreams/image", async (req, res) => {
+  try {
+    const { dreamText, interpretation, visualStyle } = req.body as {
+      dreamText: string;
+      interpretation?: { title?: string; symbols?: Array<{ symbol: string }>; emotions?: string[] };
+      visualStyle?: string;
+    };
+
+    if (!dreamText || typeof dreamText !== "string") {
+      res.status(400).json({ error: "dreamText is required" });
+      return;
+    }
+
+    const style = visualStyle || "Cinematic";
+    const title = interpretation?.title || "";
+    const symbols = interpretation?.symbols?.slice(0, 3).map((s) => s.symbol).join(", ") || "";
+    const emotions = interpretation?.emotions?.slice(0, 2).join(", ") || "";
+
+    const styleMap: Record<string, string> = {
+      Cinematic: "cinematic photorealistic, dramatic lighting, anamorphic lens flare, film grain",
+      Surreal: "surrealist painting, Salvador Dali inspired, dreamlike impossible geometry, melting forms",
+      Fantasy: "epic fantasy digital art, magical atmosphere, luminous ethereal light, painterly",
+      Horror: "dark horror atmosphere, ominous lighting, unsettling shadows, gothic",
+      Anime: "anime illustration style, cel shading, vibrant colors, Studio Ghibli inspired",
+      Watercolor: "soft watercolor painting, flowing washes of color, delicate brushwork, impressionistic",
+      Cyberpunk: "cyberpunk neon-lit cityscape, holographic, rain-soaked streets, sci-fi",
+    };
+
+    const stylePrompt = styleMap[style] || styleMap.Cinematic;
+
+    const prompt = [
+      `A ${style.toLowerCase()} dream scene: ${title ? `"${title}" — ` : ""}${dreamText.slice(0, 200)}`,
+      symbols ? `Key symbols: ${symbols}.` : "",
+      emotions ? `Emotional tone: ${emotions}.` : "",
+      stylePrompt,
+      "No text, no words, no letters. Dark cosmic atmosphere. Purple and cyan color palette. Highly detailed.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const response = await openai.images.generate({
+      model: "gpt-image-1",
+      prompt,
+      size: "1024x1024",
+    });
+
+    const b64 = response.data?.[0]?.b64_json;
+    if (!b64) {
+      res.status(500).json({ error: "No image returned" });
+      return;
+    }
+
+    res.json({ b64_json: b64 });
+  } catch (err) {
+    req.log.error({ err }, "Dream image generation error");
+    res.status(500).json({ error: "Failed to generate dream image" });
   }
 });
 

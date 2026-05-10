@@ -23,6 +23,7 @@ export interface Dream {
   emotions: string[];
   visualStyle?: string;
   interpretation?: DreamInterpretation;
+  imageBase64?: string;
 }
 
 interface DreamContextType {

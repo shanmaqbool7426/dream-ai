@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   Alert,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -89,10 +90,34 @@ export default function DreamDetailScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: bottomPad + 40 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Title */}
-        <Text style={styles.dreamTitle}>
-          {interp?.title || dream.title || "Untitled Dream"}
-        </Text>
+        {/* Hero Image */}
+        {dream.imageBase64 ? (
+          <View style={styles.heroImageWrap}>
+            <Image
+              source={{ uri: `data:image/png;base64,${dream.imageBase64}` }}
+              style={styles.heroImage}
+              resizeMode="cover"
+            />
+            <LinearGradient
+              colors={["transparent", "#04040F"]}
+              style={styles.heroFade}
+            />
+            <View style={styles.heroOverlay}>
+              <Text style={styles.dreamTitle}>
+                {interp?.title || dream.title || "Untitled Dream"}
+              </Text>
+              {dream.visualStyle && (
+                <View style={styles.styleBadge}>
+                  <Text style={styles.styleBadgeText}>{dream.visualStyle}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.dreamTitle}>
+            {interp?.title || dream.title || "Untitled Dream"}
+          </Text>
+        )}
 
         {/* Emotions */}
         {dream.emotions.length > 0 && (
@@ -200,12 +225,49 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     gap: 16,
   },
+  heroImageWrap: {
+    marginHorizontal: -20,
+    marginTop: -4,
+    position: "relative",
+  },
+  heroImage: {
+    width: "100%",
+    height: 280,
+  },
+  heroFade: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 120,
+  },
+  heroOverlay: {
+    position: "absolute",
+    bottom: 16,
+    left: 20,
+    right: 20,
+    gap: 6,
+  },
   dreamTitle: {
     color: "#E8E2FF",
     fontSize: 26,
     fontFamily: "Inter_700Bold",
     lineHeight: 34,
     letterSpacing: -0.3,
+  },
+  styleBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(123,92,245,0.3)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "rgba(123,92,245,0.5)",
+  },
+  styleBadgeText: {
+    color: "#B0A8FF",
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
   },
   emotionRow: {
     flexDirection: "row",
