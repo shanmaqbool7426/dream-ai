@@ -4,6 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Platform,
@@ -16,6 +17,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EmotionBadge } from "@/components/EmotionBadge";
 import { useDreams } from "@/context/DreamContext";
+
+const VISUAL_STYLES = ["Cinematic", "Surreal", "Fantasy", "Horror", "Anime", "Watercolor", "Cyberpunk"];
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -30,9 +33,13 @@ export default function DreamDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { getDream, deleteDream } = useDreams();
+  const { getDream, deleteDream, updateDream } = useDreams();
   const dream = getDream(id);
-  const [deleting, setDeleting] = useState(false);
+
+  const [regenerating, setRegenerating] = useState(false);
+  const [selectedStyle, setSelectedStyle] = useState<string>(dream?.visualStyle || "Cinematic");
+  const [showStylePicker, setShowStylePicker] = useState(false);
+  const [localImageBase64, setLocalImageBase64] = useState<string | undefined>(dream?.imageBase64);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -61,7 +68,6 @@ export default function DreamDetailScreen() {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            setDeleting(true);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             await deleteDream(dream.id);
             router.back();
@@ -71,7 +77,44 @@ export default function DreamDetailScreen() {
     );
   }
 
+  async function handleRegenerate() {
+    setRegenerating(true);
+    setShowStylePicker(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      const domain = process.env.EXPO_PUBLIC_DOMAIN;
+      const res = await fetch(`https://${domain}/api/dreams/image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dreamText: dream.text,
+          interpretation: dream.interpretation,
+          visualStyle: selectedStyle,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Server error");
+      const data = await res.json() as { b64_json?: string };
+
+      if (data.b64_json) {
+        setLocalImageBase64(data.b64_json);
+        await updateDream(dream.id, {
+          imageBase64: data.b64_json,
+          visualStyle: selectedStyle,
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Error", "Could not generate image. Please try again.");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   const interp = dream.interpretation;
+  const displayImage = localImageBase64;
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
@@ -91,13 +134,20 @@ export default function DreamDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Hero Image */}
-        {dream.imageBase64 ? (
+        {displayImage ? (
           <View style={styles.heroImageWrap}>
-            <Image
-              source={{ uri: `data:image/png;base64,${dream.imageBase64}` }}
-              style={styles.heroImage}
-              resizeMode="cover"
-            />
+            {regenerating ? (
+              <View style={styles.regenOverlay}>
+                <ActivityIndicator color="#7B5CF5" size="large" />
+                <Text style={styles.regenOverlayText}>Visualizing your dream...</Text>
+              </View>
+            ) : (
+              <Image
+                source={{ uri: `data:image/png;base64,${displayImage}` }}
+                style={styles.heroImage}
+                resizeMode="cover"
+              />
+            )}
             <LinearGradient
               colors={["transparent", "#04040F"]}
               style={styles.heroFade}
@@ -106,17 +156,106 @@ export default function DreamDetailScreen() {
               <Text style={styles.dreamTitle}>
                 {interp?.title || dream.title || "Untitled Dream"}
               </Text>
-              {dream.visualStyle && (
-                <View style={styles.styleBadge}>
-                  <Text style={styles.styleBadgeText}>{dream.visualStyle}</Text>
-                </View>
-              )}
+              <View style={styles.heroBadgeRow}>
+                {selectedStyle && (
+                  <View style={styles.styleBadge}>
+                    <Text style={styles.styleBadgeText}>{selectedStyle}</Text>
+                  </View>
+                )}
+                <Pressable
+                  onPress={() => setShowStylePicker((v) => !v)}
+                  style={styles.regenBtn}
+                  disabled={regenerating}
+                >
+                  <Ionicons name="color-wand-outline" size={13} color="#E8E2FF" />
+                  <Text style={styles.regenBtnText}>Restyle</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
         ) : (
-          <Text style={styles.dreamTitle}>
-            {interp?.title || dream.title || "Untitled Dream"}
-          </Text>
+          <View>
+            <Text style={styles.dreamTitle}>
+              {interp?.title || dream.title || "Untitled Dream"}
+            </Text>
+            {/* No image yet — show generate button */}
+            <Pressable
+              onPress={() => setShowStylePicker((v) => !v)}
+              style={styles.generateImageBtn}
+              disabled={regenerating}
+            >
+              <LinearGradient
+                colors={regenerating ? ["#3D2E8A", "#2A1E60"] : ["#9B7AFF", "#7B5CF5"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.generateImageBtnGradient}
+              >
+                {regenerating ? (
+                  <View style={styles.regenRow}>
+                    <ActivityIndicator color="#B0A8FF" size="small" />
+                    <Text style={styles.generateImageBtnText}>Visualizing...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.regenRow}>
+                    <Ionicons name="image-outline" size={16} color="#FFFFFF" />
+                    <Text style={styles.generateImageBtnText}>Generate Dream Image</Text>
+                  </View>
+                )}
+              </LinearGradient>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Style Picker */}
+        {showStylePicker && (
+          <View style={styles.stylePickerCard}>
+            <Text style={styles.stylePickerLabel}>Choose a visual style</Text>
+            <View style={styles.styleGrid}>
+              {VISUAL_STYLES.map((s) => (
+                <Pressable
+                  key={s}
+                  onPress={() => setSelectedStyle(s)}
+                  style={[
+                    styles.styleOption,
+                    s === selectedStyle && styles.styleOptionSelected,
+                  ]}
+                >
+                  <Text style={[
+                    styles.styleOptionText,
+                    s === selectedStyle && styles.styleOptionTextSelected,
+                  ]}>
+                    {s}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable
+              onPress={handleRegenerate}
+              disabled={regenerating}
+              style={styles.applyStyleBtn}
+            >
+              <LinearGradient
+                colors={["#9B7AFF", "#7B5CF5"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.applyStyleBtnGradient}
+              >
+                {regenerating ? (
+                  <View style={styles.regenRow}>
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <Text style={styles.applyStyleBtnText}>Generating...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.regenRow}>
+                    <Ionicons name="sparkles" size={15} color="#FFFFFF" />
+                    <Text style={styles.applyStyleBtnText}>
+                      Generate in {selectedStyle}
+                    </Text>
+                  </View>
+                )}
+              </LinearGradient>
+            </Pressable>
+          </View>
         )}
 
         {/* Emotions */}
@@ -232,21 +371,39 @@ const styles = StyleSheet.create({
   },
   heroImage: {
     width: "100%",
-    height: 280,
+    height: 300,
+  },
+  regenOverlay: {
+    width: "100%",
+    height: 300,
+    backgroundColor: "rgba(7,5,20,0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  regenOverlayText: {
+    color: "#7B5CF5",
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
   },
   heroFade: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: 120,
+    height: 140,
   },
   heroOverlay: {
     position: "absolute",
     bottom: 16,
     left: 20,
     right: 20,
-    gap: 6,
+    gap: 8,
+  },
+  heroBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   dreamTitle: {
     color: "#E8E2FF",
@@ -257,17 +414,105 @@ const styles = StyleSheet.create({
   },
   styleBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "rgba(123,92,245,0.3)",
+    backgroundColor: "rgba(13,11,34,0.7)",
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderWidth: 1,
-    borderColor: "rgba(123,92,245,0.5)",
+    borderColor: "rgba(123,92,245,0.4)",
   },
   styleBadgeText: {
     color: "#B0A8FF",
     fontSize: 11,
     fontFamily: "Inter_500Medium",
+  },
+  regenBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(123,92,245,0.5)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: "rgba(123,92,245,0.6)",
+  },
+  regenBtnText: {
+    color: "#E8E2FF",
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+  },
+  generateImageBtn: {
+    marginTop: 12,
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  generateImageBtnGradient: {
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  generateImageBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  regenRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  stylePickerCard: {
+    backgroundColor: "rgba(13,11,34,0.98)",
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(123,92,245,0.25)",
+    gap: 14,
+  },
+  stylePickerLabel: {
+    color: "#B0A8FF",
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  styleGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  styleOption: {
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: "rgba(123,92,245,0.25)",
+    backgroundColor: "rgba(4,4,15,0.6)",
+  },
+  styleOptionSelected: {
+    backgroundColor: "rgba(123,92,245,0.2)",
+    borderColor: "#7B5CF5",
+  },
+  styleOptionText: {
+    color: "#6866A0",
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  styleOptionTextSelected: {
+    color: "#B0A8FF",
+  },
+  applyStyleBtn: {
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  applyStyleBtnGradient: {
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  applyStyleBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   emotionRow: {
     flexDirection: "row",
